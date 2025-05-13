@@ -1,0 +1,79 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ],
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "auth": {
+      "port": 9099
+    },
+    "functions": {
+      "port": 5001
+    },
+    "firestore": {
+      "port": 8080
+    },
+    "database": {
+      "port": 9000
+    },
+    "storage": {
+      "port": 9199
+    },
+    "dataconnect": {
+      "port": 9399,
+      "dataDir": "dataconnect/.dataconnect/pgliteData"
+    },
+    "tasks": {
+      "port": 9499
+    },
+    "ui": {
+      "enabled": true
+    },
+    "singleProjectMode": true
+  },
+  "remoteconfig": {
+    "template": "remoteconfig.template.json"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "pawtique3-85ed4",
+          "appId": "1:42873329743:android:002a11981ce7222306723a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "pawtique3-85ed4",
+          "configurations": {
+            "android": "1:42873329743:android:002a11981ce7222306723a",
+            "ios": "1:42873329743:ios:e446c0aa92c1c9d606723a",
+            "macos": "1:42873329743:ios:e446c0aa92c1c9d606723a",
+            "web": "1:42873329743:web:4874c1ea027c5d9406723a",
+            "windows": "1:42873329743:web:f8e9783417b7909606723a"
+          }
+        }
+      }
+    }
+  }
+}

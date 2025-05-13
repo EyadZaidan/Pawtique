@@ -1,0 +1,76 @@
+name: pawtique3
+description: "A new Flutter project."
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  cupertino_icons: ^1.0.8
+  google_sign_in: ^6.2.1
+  google_api_availability: ^5.0.1
+  cloud_firestore: ^5.4.4
+  google_fonts: ^6.2.1
+  connectivity_plus: ^6.0.5
+  provider: ^6.1.2
+  firebase_storage: ^12.4.4
+  image_picker: ^1.0.7
+  intl: ^0.19.0
+  fl_chart: ^0.68.0
+  cached_network_image: ^3.4.1
+  uuid: ^4.5.0
+  http: ^1.2.2
+  firebase_dynamic_links: ^6.0.6
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1
+  mockito: ^5.4.4  # Added previously for testing
+
+flutter:
+  uses-material-design: true
+
+  # Assets section
+  assets:
+    - assets/pet_image.jpg
+    - assets/image_8.png
+    - assets/family_picture.png
+    - assets/dog_picture.png
+    - assets/girl_dog.png
+    - assets/dog.png
+    - assets/google_logo.png
+    - assets/dog_food.png
+    - assets/cat_food.png
+    - assets/healthcare.png
+    - assets/dog_treats.png
+    - assets/cat_treats.png
+    - assets/litter_supplies.png
+    - assets/toys.png
+    - assets/walk_essentials.png
+    - assets/grooming.png
+    - assets/first_offer.png
+    - assets/second_offer.png
+    - assets/third_offer.png
+    - assets/fourth_offer.png
+    - assets/fifth_offer.png
+    - assets/sixth_offer.png
+    - assets/bowls_feeders.png
+    - assets/beddings.png
+    - assets/clothing.png
+    - assets/offer_picture.png
+    - assets/image_9.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/image_9.png"
+  min_sdk_android: 21

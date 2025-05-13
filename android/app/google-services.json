@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "42873329743",
+    "firebase_url": "https://pawtique3-85ed4-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "pawtique3-85ed4",
+    "storage_bucket": "pawtique3-85ed4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:42873329743:android:002a11981ce7222306723a",
+        "android_client_info": {
+          "package_name": "com.example.pawtique3"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "42873329743-o24c633lltosff2i1td15vramp9bot4r.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pawtique3",
+            "certificate_hash": "d47caa87370310f9e1d22bbfe8ff830c3361b377"
+          }
+        },
+        {
+          "client_id": "42873329743-qnai4j4kn1sdui8aecmqqibk7dk5b42v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBs153hTWETyPAQC6b6YIGxj3AdWArrqc4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "42873329743-qnai4j4kn1sdui8aecmqqibk7dk5b42v.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "42873329743-0bfp93icr7m6vadml5abo806om176d7c.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pawtique3"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
