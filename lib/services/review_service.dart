@@ -69,55 +69,73 @@ class ReviewService {
     required double rating,
     required String comment,
   }) async {
-    // Start a batch write
-    final WriteBatch batch = _firestore.batch();
+    try {
+      // Start a batch write
+      final WriteBatch batch = _firestore.batch();
 
-    // Create review document
-    final reviewData = {
-      'productId': productId,
-      'userId': userId,
-      'userName': userName,
-      'rating': rating,
-      'comment': comment,
-      'timestamp': FieldValue.serverTimestamp(),
-      'helpfulCount': 0,
-      'helpfulUserIds': [],
-    };
+      // Create review document
+      final reviewData = {
+        'productId': productId,
+        'userId': userId,
+        'userName': userName,
+        'rating': rating,
+        'comment': comment,
+        'timestamp': FieldValue.serverTimestamp(),
+        'helpfulCount': 0,
+        'helpfulUserIds': [],
+      };
 
-    // Add review to reviews collection
-    final reviewRef = _reviewsCollection.doc();
-    batch.set(reviewRef, reviewData);
+      // Add review to reviews collection
+      final reviewRef = _reviewsCollection.doc();
+      print('Adding review to path: ${reviewRef.path}, Data: $reviewData');
+      batch.set(reviewRef, reviewData);
 
-    // Get the product document to update its rating
-    final productDoc = await _productsCollection.doc(productId).get();
+      // Get the product document to update its rating
+      final productDoc = await _productsCollection.doc(productId).get();
 
-    if (productDoc.exists) {
-      // Get all reviews for this product to calculate new average
-      final reviewsSnapshot = await _reviewsCollection
-          .where('productId', isEqualTo: productId)
-          .get();
+      if (productDoc.exists) {
+        // Get all reviews for this product to calculate new average
+        final reviewsSnapshot = await _reviewsCollection
+            .where('productId', isEqualTo: productId)
+            .get();
 
-      double totalRating = rating; // Start with the new rating
-      int reviewCount = 1; // Start with this new review
+        double totalRating = rating; // Start with the new rating
+        int reviewCount = 1; // Start with this new review
 
-      for (var doc in reviewsSnapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
-        totalRating += data['rating'] ?? 0.0;
-        reviewCount++;
+        for (var doc in reviewsSnapshot.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          totalRating += data['rating'] ?? 0.0;
+          reviewCount++;
+        }
+
+        final newAverageRating = totalRating / reviewCount;
+
+        // Update product with new rating data
+        final productUpdateData = {
+          'rating': newAverageRating,
+          'reviewCount': reviewCount,
+          'lastReviewDate': FieldValue.serverTimestamp(),
+        };
+        print('Updating product at path: ${productDoc.reference.path}, Data: $productUpdateData');
+        batch.update(_productsCollection.doc(productId), productUpdateData);
+      } else {
+        print('Product document does not exist at path: ${productDoc.reference.path}');
+        // Create the product document with initial rating data
+        final initialProductData = {
+          'rating': rating,
+          'reviewCount': 1,
+          'lastReviewDate': FieldValue.serverTimestamp(),
+        };
+        print('Creating product at path: ${productDoc.reference.path}, Data: $initialProductData');
+        batch.set(_productsCollection.doc(productId), initialProductData);
       }
 
-      final newAverageRating = totalRating / reviewCount;
-
-      // Update product with new rating data
-      batch.update(_productsCollection.doc(productId), {
-        'rating': newAverageRating,
-        'reviewCount': reviewCount,
-        'lastReviewDate': FieldValue.serverTimestamp(),
-      });
+      // Commit the batch
+      await batch.commit();
+    } catch (e) {
+      print('Error submitting review: $e');
+      throw e;
     }
-
-    // Commit the batch
-    await batch.commit();
   }
 
   // Get all reviews for a specific product

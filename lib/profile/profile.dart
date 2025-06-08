@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,9 +6,9 @@ import 'package:provider/provider.dart';
 import 'profile_info_page.dart';
 import '../screens/order_page.dart';
 import '../utils/theme_provider.dart';
-import '../models/payment_method.dart'; // Corrected path
-import '../widgets/chat_bubble.dart'; // Corrected path
-import '../services/chat_service.dart'; // Corrected path
+import '../models/payment_method.dart';
+import '../widgets/chat_bubble.dart';
+import '../services/chat_service.dart';
 
 class ProfilePage extends StatefulWidget {
   final String displayName;
@@ -26,16 +27,12 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ChatService _chatService = ChatService();
 
-  // User settings state
   bool _notificationsEnabled = true;
   bool _isLoadingUserData = true;
   List<PaymentMethod> _paymentMethods = [];
-  String? _profileImageUrl;
+  String? _profileImagePath;
 
-  // Tab controller for organizing sections
   late TabController _tabController;
-
-  // Form keys for validation
   final _paymentFormKey = GlobalKey<FormState>();
 
   @override
@@ -67,7 +64,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           final userData = userDoc.data() ?? {};
           debugPrint('User document found: ${userData.keys.toString()}');
 
-          // Load payment methods
           final paymentMethodsSnapshot = await _firestore
               .collection('users')
               .doc(user.uid)
@@ -82,16 +78,15 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
           setState(() {
             _notificationsEnabled = userData['notificationsEnabled'] ?? true;
-            _profileImageUrl = userData['imageUrl'] ?? userData['profileImageUrl']; // Check both imageUrl and profileImageUrl
+            _profileImagePath = userData['imagePath'];
             _paymentMethods = paymentMethods;
             _isLoadingUserData = false;
           });
         } else {
           debugPrint('User document does not exist, creating one');
-          // User document doesn't exist yet, create it
           await _firestore.collection('users').doc(user.uid).set({
             'notificationsEnabled': true,
-            'imageUrl': null,
+            'imagePath': null,
             'email': user.email,
             'displayName': widget.displayName,
             'phone': 'Not provided',
@@ -105,7 +100,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         }
       } else {
         debugPrint('No user is signed in');
-        // No user is signed in
         setState(() {
           _isLoadingUserData = false;
         });
@@ -116,22 +110,18 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         _isLoadingUserData = false;
       });
 
-      // Only show error in UI if there was an actual error, not just missing data
       if (error is! FirebaseException || error.code != 'not-found') {
-        // Don't show snack bar here as it's confusing users
-        // Since data loads successfully but snack bar shows error
-        // _showErrorSnackBar('Failed to load profile data. Please try again.');
         debugPrint('Suppressing error snack bar for better UX');
       }
     }
   }
+
   void _sendMessage() {
     if (_messageController.text.isEmpty) return;
 
     final userMessage = _messageController.text.trim();
 
     setState(() {
-      // Add user message
       _chatHistory.add(ChatMessage(
         sender: 'User',
         message: userMessage,
@@ -141,7 +131,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       _messageController.clear();
     });
 
-    // Simulate a slight delay for the bot's response
     Future.delayed(const Duration(milliseconds: 500), () {
       final botResponse = _chatService.getBotResponse(userMessage);
 
@@ -168,14 +157,12 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         });
 
         _showSuccessSnackBar(
-            'Notifications ${_notificationsEnabled ? 'enabled' : 'disabled'}!'
-        );
+            'Notifications ${_notificationsEnabled ? 'enabled' : 'disabled'}!');
       }
     } catch (error) {
       debugPrint('Error updating notifications: $error');
 
       setState(() {
-        // Revert state change if update failed
         _notificationsEnabled = !_notificationsEnabled;
       });
 
@@ -205,7 +192,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
   Future<void> _deleteAccount() async {
     try {
-      // Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -223,20 +209,12 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
       final user = _auth.currentUser;
       if (user != null) {
-        // Delete Firestore data
         await _firestore.collection('users').doc(user.uid).delete();
-
-        // Delete user authentication
         await user.delete();
-
-        // Close the loading dialog
         Navigator.pop(context);
-
-        // Logout (use the provided onLogout function)
         await widget.onLogout(context);
       }
     } catch (error) {
-      // Close the loading dialog if open
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
       }
@@ -244,8 +222,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       debugPrint('Error deleting account: $error');
 
       String errorMessage = 'Account deletion failed.';
-
-      // More specific error messages
       if (error is FirebaseAuthException) {
         if (error.code == 'requires-recent-login') {
           errorMessage = 'Please log out and log in again before deleting your account.';
@@ -260,14 +236,12 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        // Add to Firestore
         final docRef = await _firestore
             .collection('users')
             .doc(user.uid)
             .collection('paymentMethods')
             .add(paymentMethod.toMap());
 
-        // Update local state with the new payment method
         setState(() {
           final newMethod = paymentMethod.copyWith(id: docRef.id);
           _paymentMethods.add(newMethod);
@@ -285,7 +259,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     try {
       final user = _auth.currentUser;
       if (user != null) {
-        // Remove from Firestore
         await _firestore
             .collection('users')
             .doc(user.uid)
@@ -293,7 +266,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
             .doc(id)
             .delete();
 
-        // Update local state
         setState(() {
           _paymentMethods.removeWhere((method) => method.id == id);
         });
@@ -314,10 +286,10 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           CircleAvatar(
             radius: 40,
             backgroundColor: Colors.grey.shade200,
-            backgroundImage: _profileImageUrl != null
-                ? NetworkImage(_profileImageUrl!)
+            backgroundImage: _profileImagePath != null
+                ? FileImage(File(_profileImagePath!))
                 : null,
-            child: _profileImageUrl == null
+            child: _profileImagePath == null
                 ? Icon(
               Icons.person,
               size: 40,
@@ -383,11 +355,14 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         _buildSectionCard(
           title: 'Profile Information',
           icon: Icons.person,
-          onTap: () {
-            Navigator.push(
+          onTap: () async {
+            // Navigate to ProfileInfoPage and wait for result
+            await Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const ProfileInfoPage()),
             );
+            // Reload user info after returning
+            await _loadUserInfo();
           },
         ),
         const SizedBox(height: 12),
@@ -507,7 +482,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                       subtitle: Text(_getThemeModeName(themeProvider.themeMode)),
                       trailing: DropdownButton<ThemeMode>(
                         value: themeProvider.themeMode,
-                        underline: Container(), // Remove underline
+                        underline: Container(),
                         items: [
                           DropdownMenuItem(
                             value: ThemeMode.system,
@@ -707,17 +682,13 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                     leading: const Icon(Icons.email),
                     title: const Text('Email'),
                     subtitle: const Text('support@pawtique.com'),
-                    onTap: () {
-                      // Launch email app with pre-filled address
-                    },
+                    onTap: () {},
                   ),
                   ListTile(
                     leading: const Icon(Icons.phone),
                     title: const Text('Phone'),
                     subtitle: const Text('+90 536 449 81 96'),
-                    onTap: () {
-                      // Launch phone app with pre-filled number
-                    },
+                    onTap: () {},
                   ),
                 ],
               ),
@@ -958,7 +929,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   }
 }
 
-// Model classes that should be in separate files
 class ChatMessage {
   final String sender;
   final String message;

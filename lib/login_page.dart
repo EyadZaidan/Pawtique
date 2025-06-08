@@ -6,6 +6,7 @@ import 'forgot_password_page.dart';
 import 'main_screen.dart';
 import 'AdminPanel/admin_panel_page.dart';
 import 'signup_page.dart';
+import 'verify_otp_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -17,8 +18,6 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _auth = FirebaseAuth.instance;
-
   bool _isLoading = false;
   bool _passwordVisible = false;
   String? _errorMessage;
@@ -27,8 +26,9 @@ class _LoginPageState extends State<LoginPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final uri = ModalRoute.of(context)?.settings.arguments as Uri?;
-      if (uri != null && uri.queryParameters['verified'] == 'true') {
+      if (!mounted) return;
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args is Uri && args.queryParameters['verified'] == 'true') {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Account verified')),
         );
@@ -36,19 +36,25 @@ class _LoginPageState extends State<LoginPage> {
     });
   }
 
+  Future<bool> isAdminUser() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (doc.exists) {
+      return doc.data()?['isAdmin'] == true;
+    }
+    return false;
+  }
+
+// Replace your _login() method with this improved version
+
   Future<void> _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please fill all fields',
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-          ),
-          backgroundColor: Theme.of(context).colorScheme.surface,
-        ),
+        const SnackBar(content: Text('Please fill all fields')),
       );
       return;
     }
@@ -59,44 +65,78 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+      // Sign in with Firebase Auth
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final user = userCredential.user;
+      User? user = userCredential.user;
       if (user == null) throw Exception('User not found');
 
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
+      // Check user document in Firestore
+      final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final userDoc = await userDocRef.get();
 
-      if (userDoc.exists && userDoc['isVerified'] == false) {
-        setState(() => _errorMessage = 'Please verify your email first.');
-        return;
+      print('=== LOGIN DEBUG ===');
+      print('User UID: ${user.uid}');
+      print('User Email: ${user.email}');
+      print('Document exists: ${userDoc.exists}');
+
+      if (userDoc.exists) {
+        final userData = userDoc.data()!;
+        print('isVerified in Firestore: ${userData['isVerified']}');
+        print('Full user data: $userData');
       }
 
+      // Check if user document exists and is verified
       if (!userDoc.exists) {
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'email': user.email ?? email,
-          'fullName': user.displayName ?? 'User',
-          'isAdmin': false,
-          'isVerified': false,
-          'createdAt': FieldValue.serverTimestamp(),
+        setState(() {
+          _errorMessage = 'User profile not found. Please contact support.';
+          _isLoading = false;
         });
-        setState(() => _errorMessage = 'Please verify your email first.');
+        await FirebaseAuth.instance.signOut();
         return;
       }
 
-      String displayName = user.displayName ?? 'User';
-      if (userDoc.data() != null) {
-        final data = userDoc.data() as Map<String, dynamic>;
-        displayName = data['fullName']?.toString() ?? displayName;
+      final userData = userDoc.data()!;
+      final isVerified = userData['isVerified'] as bool? ?? false;
+
+      if (!isVerified) {
+        // User needs to verify their email
+        setState(() {
+          _errorMessage = 'Please verify your email first.';
+          _isLoading = false;
+        });
+
+        // Redirect to OTP verification page
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => VerifyOtpPage(
+              email: userData['email'] as String? ?? user.email ?? email,
+              userId: user.uid,
+            ),
+          ),
+        );
+        return;
       }
 
-      bool isAdmin = await isAdminUser();
+      // User is verified - proceed with login
+      // Only update non-critical fields, don't touch isVerified
+      await userDocRef.update({
+        'lastLoginAt': FieldValue.serverTimestamp(),
+        // Don't update isVerified here - it should only be updated during OTP verification
+      });
 
+      final displayName = userData['fullName'] as String? ?? user.displayName ?? 'User';
+      final isAdmin = userData['isAdmin'] as bool? ?? false;
+
+      print('Login successful - proceeding to main screen');
+      print('Display name: $displayName');
+      print('Is admin: $isAdmin');
+
+      // Navigate to appropriate screen
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
@@ -106,36 +146,73 @@ class _LoginPageState extends State<LoginPage> {
         ),
             (route) => false,
       );
+
     } on FirebaseAuthException catch (e) {
+      print('Firebase Auth Error: ${e.code} - ${e.message}');
       setState(() {
-        _errorMessage = e.code == 'user-not-found' || e.code == 'wrong-password'
-            ? 'Invalid email or password.'
-            : e.message ?? 'Login failed.';
+        _errorMessage = _getAuthErrorMessage(e.code);
       });
     } catch (e) {
-      setState(() => _errorMessage = 'Error: $e');
+      print('Login Error: $e');
+      setState(() => _errorMessage = 'An unexpected error occurred. Please try again.');
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
+// Helper method to get user-friendly error messages
+  String _getAuthErrorMessage(String code) {
+    switch (code) {
+      case 'user-not-found':
+        return 'No account found with this email address.';
+      case 'wrong-password':
+        return 'Incorrect password. Please try again.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'user-disabled':
+        return 'This account has been disabled. Contact support.';
+      case 'too-many-requests':
+        return 'Too many failed attempts. Please try again later.';
+      case 'network-request-failed':
+        return 'Network error. Please check your connection.';
+      default:
+        return 'Login failed. Please try again.';
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    final isLoginEnabled = !_isLoading &&
+        _emailController.text.trim().isNotEmpty &&
+        _passwordController.text.trim().isNotEmpty;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          Container(color: Theme.of(context).scaffoldBackgroundColor),
-          SafeArea(
-            child: SingleChildScrollView(
+      backgroundColor: Theme.of(context).colorScheme.background,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Positioned(
+              top: screenHeight * 0.05,
+              right: -screenWidth * 0.05,
+              height: screenHeight * 0.7,
+              width: screenWidth * 0.65,
+              child: Image.asset(
+                'assets/girl_dog.png',
+                fit: BoxFit.cover,
+                alignment: Alignment.centerRight,
+              ),
+            ),
+            SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      Image.asset('assets/image_8.png', height: 30),
+                      Image.asset('assets/new_app_icon.png', height: 30),
                       const SizedBox(width: 8),
                       Text(
                         'Pawtique',
@@ -147,7 +224,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 40),
+                  SizedBox(height: screenHeight * 0.22),
                   const Text(
                     'Login',
                     style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
@@ -157,32 +234,33 @@ class _LoginPageState extends State<LoginPage> {
                     'Please sign in to continue.',
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
-                  const SizedBox(height: 24),
+                  SizedBox(height: screenHeight * 0.06),
                   TextField(
                     controller: _emailController,
-                    decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.email_outlined, color: Theme.of(context).colorScheme.onSurface),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.email_outlined),
                       labelText: 'Email',
-                      border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
+                    onChanged: (_) => setState(() {}),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _passwordController,
                     obscureText: !_passwordVisible,
                     decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.lock_outline, color: Theme.of(context).colorScheme.onSurface),
+                      prefixIcon: const Icon(Icons.lock_outline),
                       labelText: 'Password',
-                      border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _passwordVisible ? Icons.visibility : Icons.visibility_off,
-                          color: Theme.of(context).colorScheme.onSurface,
                         ),
-                        onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
+                        onPressed: () {
+                          setState(() => _passwordVisible = !_passwordVisible);
+                        },
                       ),
                     ),
+                    onChanged: (_) => setState(() {}),
                   ),
                   Align(
                     alignment: Alignment.centerRight,
@@ -193,10 +271,10 @@ class _LoginPageState extends State<LoginPage> {
                           MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
                         );
                       },
-                      child: Text(
+                      child: const Text(
                         'Forgot Password?',
                         style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
+                          color: Colors.orange,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -206,7 +284,7 @@ class _LoginPageState extends State<LoginPage> {
                   _isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : ElevatedButton(
-                    onPressed: _login,
+                    onPressed: isLoginEnabled ? _login : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       minimumSize: const Size(double.infinity, 50),
@@ -252,8 +330,8 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

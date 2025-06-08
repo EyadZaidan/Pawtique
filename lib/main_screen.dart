@@ -4,9 +4,13 @@ import 'package:flutter/material.dart';
 import 'login_page.dart';
 import 'screens/product_listing_page.dart';
 import 'screens/cart_page.dart';
-import 'Profile/profile.dart'; // Import for profile.dart
-import '../utils/auth_utils.dart'; // Import for isAdminUser
-import 'favorites_page.dart'; // Import the FavoritesPage
+import 'Profile/profile.dart';
+import '../utils/auth_utils.dart';
+import 'favorites_page.dart';
+import '../services/cart_service.dart';
+import '../models/product.dart';
+import 'package:animated_text_kit/animated_text_kit.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class MainScreen extends StatefulWidget {
   final String displayName;
@@ -21,6 +25,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   late List<String> notifications;
+  final CartService _cartService = CartService();
 
   @override
   void initState() {
@@ -135,13 +140,19 @@ class _MainScreenState extends State<MainScreen> {
     }
 
     final List<Widget> pages = [
-      HomePage(displayName: widget.displayName),
-      const FavoritesPage(), // Use the actual FavoritesPage widget
+      HomePage(
+        displayName: widget.displayName.isEmpty ? 'User' : widget.displayName,
+        cartService: _cartService,
+      ),
+      const FavoritesPage(),
       CartPage(
         onOrderConfirmed: _resetToHomeTab,
         addNotification: _addNotification,
       ),
-      ProfilePage(displayName: widget.displayName, onLogout: _logout),
+      ProfilePage(
+        displayName: widget.displayName.isEmpty ? 'User' : widget.displayName,
+        onLogout: _logout,
+      ),
     ];
 
     return Scaffold(
@@ -152,7 +163,7 @@ class _MainScreenState extends State<MainScreen> {
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Image.asset(
-            'assets/image_8.png',
+            'assets/new_app_icon.png', // Updated to match launcher icon
             height: 30,
             errorBuilder: (context, error, stackTrace) {
               return Icon(
@@ -225,21 +236,13 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Favorites',
           ),
           BottomNavigationBarItem(
-            icon: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user.uid)
-                  .collection('cart')
-                  .snapshots(),
+            icon: StreamBuilder<int>(
+              stream: _cartService.getCartItemCount(user.uid).asStream(),
               builder: (context, snapshot) {
-                if (snapshot.hasError || snapshot.connectionState == ConnectionState.waiting) {
+                if (snapshot.hasError || !snapshot.hasData) {
                   return const Icon(Icons.shopping_cart);
                 }
-                final cartItems = snapshot.data!.docs;
-                final itemCount = cartItems.fold(0, (sum, doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return sum + (data['quantity'] as int? ?? 0);
-                });
+                final itemCount = snapshot.data ?? 0;
                 return Stack(
                   children: [
                     const Icon(Icons.shopping_cart),
@@ -294,8 +297,13 @@ class _MainScreenState extends State<MainScreen> {
 
 class HomePage extends StatelessWidget {
   final String displayName;
+  final CartService cartService;
 
-  const HomePage({super.key, required this.displayName});
+  const HomePage({
+    super.key,
+    required this.displayName,
+    required this.cartService,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -306,39 +314,88 @@ class HomePage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              'Welcome, $displayName!',
+              'Welcome, ${displayName.isEmpty ? 'User' : displayName}!',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
           ),
-          Container(
+          // Enhanced and centered animated "PAWTIQUE" text with larger, surrounding pet symbols
+          SizedBox(
             height: 200,
-            width: double.infinity,
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: AssetImage('assets/offer_picture.png'),
-                fit: BoxFit.cover,
-              ),
-            ),
             child: Stack(
+              alignment: Alignment.center,
               children: [
+                // Surrounding pet symbols in a circular pattern
                 Positioned(
-                  top: 20,
-                  left: 20,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.yellow.withOpacity(0.8),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      'UP TO 20% OFF',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
+                  top: 30,
+                  left: 0,
+                  child: Transform.rotate(
+                    angle: -0.5,
+                    child: Icon(
+                      Icons.pets,
+                      size: 50,
+                      color: Colors.brown.withOpacity(0.7),
                     ),
                   ),
+                ),
+                Positioned(
+                  top: 30,
+                  right: 0,
+                  child: Transform.rotate(
+                    angle: 0.5,
+                    child: Icon(
+                      Icons.pets,
+                      size: 50,
+                      color: Colors.brown.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 30,
+                  left: 0,
+                  child: Transform.rotate(
+                    angle: -0.5,
+                    child: Icon(
+                      Icons.pets,
+                      size: 50,
+                      color: Colors.brown.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 30,
+                  right: 0,
+                  child: Transform.rotate(
+                    angle: 0.5,
+                    child: Icon(
+                      Icons.pets,
+                      size: 50,
+                      color: Colors.brown.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+                // Animated text with larger size and slower speed
+                AnimatedTextKit(
+                  animatedTexts: [
+                    TypewriterAnimatedText(
+                      'PAWTIQUE',
+                      textStyle: GoogleFonts.caveat(
+                        textStyle: TextStyle(
+                          fontSize: 80,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ) ?? TextStyle(
+                        fontSize: 80,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      speed: const Duration(milliseconds: 400),
+                    ),
+                  ],
+                  totalRepeatCount: 1,
+                  displayFullTextOnTap: true,
+                  stopPauseOnTap: true,
                 ),
               ],
             ),
@@ -382,39 +439,18 @@ class HomePage extends StatelessWidget {
             crossAxisSpacing: 8.0,
             mainAxisSpacing: 8.0,
             children: [
-              _buildCategoryCard('Dog Food', 'assets/dog_food.png', context),
-              _buildCategoryCard('Cat Food', 'assets/cat_food.png', context),
-              _buildCategoryCard('Healthcare', 'assets/healthcare.png', context),
-              _buildCategoryCard('Dog Treats', 'assets/dog_treats.png', context),
-              _buildCategoryCard('Cat Treats', 'assets/cat_treats.png', context),
-              _buildCategoryCard('Litter Supplies', 'assets/litter_supplies.png', context),
-              _buildCategoryCard('Toys', 'assets/toys.png', context),
-              _buildCategoryCard('Walk Essentials', 'assets/walk_essentials.png', context),
-              _buildCategoryCard('Grooming', 'assets/grooming.png', context),
-              _buildCategoryCard('Bowls and Feeders', 'assets/bowls_feeders.png', context),
-              _buildCategoryCard('Beddings', 'assets/beddings.png', context),
-              _buildCategoryCard('Clothing', 'assets/clothing.png', context),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Text(
-              'Best Offers',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ),
-          ListView(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(8.0),
-            children: [
-              _buildOfferCard('Winter Hoodie with Pockets', '\$10', 'assets/first_offer.png', context),
-              _buildOfferCard('More Energy 5x5kg', '\$10', 'assets/second_offer.png', context),
-              _buildOfferCard('Winter Hoodie with Pockets', '\$10', 'assets/third_offer.png', context),
-              _buildOfferCard('Puppy Food', '\$10', 'assets/fourth_offer.png', context),
-              _buildOfferCard('Winter Hoodie with Pockets', '\$10', 'assets/fifth_offer.png', context),
-              _buildOfferCard('Catnip Toy', '\$10', 'assets/sixth_offer.png', context),
+              _buildCategoryCard('Dog Food', 'assets/dog_food.png', context, 'Dog Food'),
+              _buildCategoryCard('Cat Food', 'assets/cat_food.png', context, 'Cat Food'),
+              _buildCategoryCard('Healthcare', 'assets/healthcare.png', context, 'Healthcare'),
+              _buildCategoryCard('Dog Treats', 'assets/dog_treats.png', context, 'Dog Treats'),
+              _buildCategoryCard('Cat Treats', 'assets/cat_treats.png', context, 'Cat Treats'),
+              _buildCategoryCard('Litter Supplies', 'assets/litter_supplies.png', context, 'Litter Supplies'),
+              _buildCategoryCard('Toys', 'assets/toys.png', context, 'Toys'),
+              _buildCategoryCard('Walk Essentials', 'assets/walk_essentials.png', context, 'Walk Essentials'),
+              _buildCategoryCard('Grooming', 'assets/grooming.png', context, 'Grooming'),
+              _buildCategoryCard('Bowls and Feeders', 'assets/bowls_feeders.png', context, 'Bowls and Feeders'),
+              _buildCategoryCard('Beddings', 'assets/beddings.png', context, 'Beddings'),
+              _buildCategoryCard('Clothing', 'assets/clothing.png', context, 'Clothing'),
             ],
           ),
         ],
@@ -422,82 +458,42 @@ class HomePage extends StatelessWidget {
     );
   }
 
-  Widget _buildCategoryCard(String title, String imagePath, BuildContext context) {
+  Widget _buildCategoryCard(String title, String imagePath, BuildContext context, String categoryName) {
     return Card(
       elevation: 2,
       color: Theme.of(context).colorScheme.surface,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Image.asset(
-            imagePath,
-            height: 60,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return Icon(
-                Icons.pets,
-                size: 60,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOfferCard(String title, String price, String imagePath, BuildContext context) {
-    return Card(
-      elevation: 2,
-      color: Theme.of(context).colorScheme.surface,
-      margin: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Image.asset(
-            imagePath,
-            width: double.infinity,
-            height: 150,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                height: 150,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1),
-                child: Center(
-                  child: Text(
-                    'Image not found',
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
-                  ),
-                ),
-              );
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  price,
-                  style: const TextStyle(fontSize: 14, color: Colors.green),
-                ),
-              ],
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ProductListingPage(initialCategory: categoryName),
             ),
-          ),
-        ],
+          );
+        },
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              imagePath,
+              height: 60,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Icon(
+                  Icons.pets,
+                  size: 60,
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,15 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/product.dart';
 
+// cart_service.dart
 class CartService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<void> addToCart(String userId, Product product, {int quantity = 1}) async {
     try {
       final cartRef = _firestore
-          .collection('cart')
+          .collection('users')
           .doc(userId)
-          .collection('items')
+          .collection('cart')
           .doc(product.id);
 
       final existingCartItem = await cartRef.get();
@@ -21,6 +22,7 @@ class CartService {
           'updatedAt': FieldValue.serverTimestamp(),
         });
       } else {
+        print('Adding to cart: Product ID ${product.id}, Price: ${product.price}');
         await cartRef.set({
           'productId': product.id,
           'name': product.name,
@@ -41,9 +43,9 @@ class CartService {
   Future<void> removeFromCart(String userId, String cartItemId) async {
     try {
       await _firestore
-          .collection('cart')
+          .collection('users')
           .doc(userId)
-          .collection('items')
+          .collection('cart')
           .doc(cartItemId)
           .delete();
     } catch (e) {
@@ -58,9 +60,9 @@ class CartService {
         await removeFromCart(userId, cartItemId);
       } else {
         await _firestore
-            .collection('cart')
+            .collection('users')
             .doc(userId)
-            .collection('items')
+            .collection('cart')
             .doc(cartItemId)
             .update({
           'quantity': quantity,
@@ -75,9 +77,9 @@ class CartService {
 
   Stream<QuerySnapshot> getCartItems(String userId) {
     return _firestore
-        .collection('cart')
+        .collection('users')
         .doc(userId)
-        .collection('items')
+        .collection('cart')
         .orderBy('addedAt', descending: true)
         .snapshots();
   }
@@ -85,9 +87,9 @@ class CartService {
   Future<int> getCartItemCount(String userId) async {
     try {
       final querySnapshot = await _firestore
-          .collection('cart')
+          .collection('users')
           .doc(userId)
-          .collection('items')
+          .collection('cart')
           .get();
 
       int totalCount = 0;
@@ -105,9 +107,9 @@ class CartService {
   Future<void> clearCart(String userId) async {
     try {
       final cartItems = await _firestore
-          .collection('cart')
+          .collection('users')
           .doc(userId)
-          .collection('items')
+          .collection('cart')
           .get();
 
       final batch = _firestore.batch();

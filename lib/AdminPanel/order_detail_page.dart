@@ -40,7 +40,10 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           }
 
           final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-          _selectedStatus ??= data['status']?.toString() ?? 'Pending';
+          // Ensure _selectedStatus is set to a valid value from _statuses
+          _selectedStatus = _statuses.contains(data['status']?.toString())
+              ? data['status']?.toString()
+              : 'Pending';
 
           debugPrint('OrderDetailPage: Loaded order data: $data');
 
@@ -118,7 +121,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                 );
               }).toList(),
               onChanged: (String? newStatus) {
-                if (newStatus != null) {
+                if (newStatus != null && newStatus != _selectedStatus) {
                   setState(() {
                     _selectedStatus = newStatus;
                   });
@@ -133,7 +136,19 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   }
 
   Widget _buildCustomerInfo(Map<String, dynamic> data) {
-    final shippingAddress = data['shippingAddress'] as Map<String, dynamic>? ?? {};
+    // Handle shippingAddress as a String and parse it, or use a fallback
+    String shippingAddressStr = data['shippingAddress']?.toString() ?? 'No address provided';
+    Map<String, dynamic> shippingAddress = {};
+    if (shippingAddressStr != 'No address provided') {
+      // Parse the string if it follows the expected format (e.g., "City: Istanbul, District: Beykoz, Address: 123 Main St")
+      final parts = shippingAddressStr.split(', ');
+      shippingAddress = {
+        'city': parts.firstWhere((p) => p.startsWith('City:'), orElse: () => '').replaceFirst('City: ', ''),
+        'district': parts.firstWhere((p) => p.startsWith('District:'), orElse: () => '').replaceFirst('District: ', ''),
+        'street': parts.firstWhere((p) => p.startsWith('Address:'), orElse: () => '').replaceFirst('Address: ', ''),
+      };
+    }
+
     return Card(
       elevation: 2,
       child: Padding(
@@ -154,10 +169,9 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               'Shipping Address',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
-            Text(shippingAddress.isNotEmpty
+            Text(shippingAddressStr.isNotEmpty
                 ? '${shippingAddress['street'] ?? ''}, ${shippingAddress['city'] ?? ''}, '
-                '${shippingAddress['state'] ?? ''} ${shippingAddress['zip'] ?? ''}, '
-                '${shippingAddress['country'] ?? ''}'
+                '${shippingAddress['district'] ?? ''}'
                 : 'No address provided'),
           ],
         ),

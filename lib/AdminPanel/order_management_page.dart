@@ -23,20 +23,18 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
     debugPrint('OrderManagementPage: Initialized with statusFilter: $_statusFilter');
   }
 
-  /// Creates the query based on the current filter
   Query<Map<String, dynamic>> _buildOrdersQuery() {
     final query = FirebaseFirestore.instance.collection('orders');
 
     if (_statusFilter == 'All') {
-      return query.orderBy('orderDate', descending: true);
+      return query.orderBy('createdAt', descending: true);
     } else {
       return query
           .where('status', isEqualTo: _statusFilter)
-          .orderBy('orderDate', descending: true);
+          .orderBy('createdAt', descending: true);
     }
   }
 
-  /// Opens the order detail page
   void _viewOrderDetails(String orderId) {
     debugPrint('OrderManagementPage: Navigating to order-details with orderId: $orderId');
     Navigator.push(
@@ -47,7 +45,6 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
     );
   }
 
-  /// Updates the status filter
   void _updateStatusFilter(String? newValue) {
     if (newValue != null && newValue != _statusFilter) {
       setState(() {
@@ -66,7 +63,7 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          setState(() {}); // Trigger rebuild to refresh data
+          setState(() {});
           return Future.delayed(const Duration(milliseconds: 500));
         },
         child: Padding(
@@ -86,7 +83,6 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
     );
   }
 
-  /// Builds the filter controls
   Widget _buildFilterBar() {
     return Container(
       decoration: BoxDecoration(
@@ -119,17 +115,13 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
     );
   }
 
-  /// Builds the orders list with StreamBuilder
   Widget _buildOrdersList() {
     return StreamBuilder<QuerySnapshot>(
       stream: _buildOrdersQuery().snapshots(),
       builder: (context, snapshot) {
-        // Handle loading state
         if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-
-        // Handle error state
         if (snapshot.hasError) {
           debugPrint('OrderManagementPage: Error: ${snapshot.error}');
           return Center(
@@ -148,8 +140,6 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
             ),
           );
         }
-
-        // Handle empty state
         if (snapshot.data == null || snapshot.data!.docs.isEmpty) {
           debugPrint('OrderManagementPage: No orders found for filter: $_statusFilter');
           return Center(
@@ -166,8 +156,6 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
             ),
           );
         }
-
-        // Build list with data
         debugPrint('OrderManagementPage: Loaded ${snapshot.data!.docs.length} orders');
         return ListView.builder(
           itemCount: snapshot.data!.docs.length,
@@ -179,21 +167,18 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
     );
   }
 
-  /// Builds a single order card
   Widget _buildOrderCard(DocumentSnapshot order) {
     final data = order.data() as Map<String, dynamic>;
     final orderId = order.id;
     final String displayId = orderId.substring(0, 8).toUpperCase();
-    final DateTime orderDate = data['orderDate'].toDate();
+    final DateTime createdAt = data['createdAt'].toDate();
     final dynamic totalAmountDynamic = data['totalAmount'];
     debugPrint('OrderManagementPage: totalAmountDynamic type: ${totalAmountDynamic.runtimeType}, value: $totalAmountDynamic');
 
-    // Convert totalAmount to num, handling potential String input
     final double totalAmount = totalAmountDynamic is num
         ? totalAmountDynamic.toDouble()
         : (double.tryParse(totalAmountDynamic?.toString() ?? '0.0') ?? 0.0);
 
-    // Get status color
     Color statusColor = _getStatusColor(data['status']);
 
     return Card(
@@ -237,7 +222,7 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
               _buildInfoRow(
                   Icons.calendar_today,
                   'Date',
-                  DateFormat('MMM d, yyyy').format(orderDate)
+                  DateFormat('MMM d, yyyy').format(createdAt)
               ),
               _buildInfoRow(
                   Icons.attach_money,
@@ -260,7 +245,6 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
     );
   }
 
-  /// Helper to build info rows in the card
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -288,7 +272,6 @@ class _OrderManagementPageState extends State<OrderManagementPage> {
     );
   }
 
-  /// Returns a color based on order status
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'pending':

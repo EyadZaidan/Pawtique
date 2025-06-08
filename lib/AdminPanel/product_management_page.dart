@@ -17,8 +17,29 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
   final _descriptionController = TextEditingController();
   final _priceController = TextEditingController();
   final _stockController = TextEditingController();
+  final _ratingController = TextEditingController();
+  final _popularityController = TextEditingController();
+  final _featuresController = TextEditingController();
+  final _tagsController = TextEditingController();
   File? _imageFile;
   final ImagePicker _picker = ImagePicker();
+  String _selectedCategory = 'Dog Food';
+  bool _inStock = true;
+
+  final List<String> _categories = [
+    'Dog Food',
+    'Cat Food',
+    'Healthcare',
+    'Dog Treats',
+    'Cat Treats',
+    'Litter Supplies',
+    'Toys',
+    'Walk Essentials',
+    'Grooming',
+    'Bowls and Feeders',
+    'Beddings',
+    'Clothing',
+  ];
 
   @override
   void dispose() {
@@ -26,6 +47,10 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
     _descriptionController.dispose();
     _priceController.dispose();
     _stockController.dispose();
+    _ratingController.dispose();
+    _popularityController.dispose();
+    _featuresController.dispose();
+    _tagsController.dispose();
     super.dispose();
   }
 
@@ -67,15 +92,38 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
       }
 
       try {
-        await FirebaseFirestore.instance.collection('products').add({
+        final searchTerms = [
+          ..._nameController.text.toLowerCase().split(' '),
+          ..._tagsController.text.toLowerCase().split(',').map((tag) => tag.trim()),
+        ].toSet().toList();
+
+        final features = _featuresController.text
+            .split(',')
+            .map((feature) => feature.trim())
+            .where((feature) => feature.isNotEmpty)
+            .toList();
+        final tags = _tagsController.text
+            .split(',')
+            .map((tag) => tag.trim())
+            .where((tag) => tag.isNotEmpty)
+            .toList();
+
+        final productData = {
           'name': _nameController.text,
+          'category': _selectedCategory,
+          'price': double.parse(_priceController.text), // Changed to price
+          'inStock': _inStock,
           'description': _descriptionController.text,
-          'price': double.parse(_priceController.text),
-          'stock': int.parse(_stockController.text),
-          'imageUrl': imageUrl,
+          'rating': double.parse(_ratingController.text),
+          'popularity': int.parse(_popularityController.text),
+          'features': features,
+          'tags': tags,
+          'imageUrl': imageUrl ?? '',
+          'searchTerms': searchTerms,
           'createdAt': Timestamp.now(),
-          'sold': 0,
-        });
+        };
+
+        await FirebaseFirestore.instance.collection('products').add(productData);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product added successfully')),
@@ -85,10 +133,16 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
         _descriptionController.clear();
         _priceController.clear();
         _stockController.clear();
+        _ratingController.clear();
+        _popularityController.clear();
+        _featuresController.clear();
+        _tagsController.clear();
         setState(() {
           _imageFile = null;
+          _inStock = true;
+          _selectedCategory = 'Dog Food';
         });
-        debugPrint('ProductManagementPage: Product added successfully');
+        debugPrint('ProductManagementPage: Product added successfully: ${productData['name']}');
       } catch (e) {
         debugPrint('ProductManagementPage: Error adding product: $e');
         ScaffoldMessenger.of(context).showSnackBar(
@@ -164,6 +218,31 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                 },
               ),
               const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  border: OutlineInputBorder(),
+                ),
+                items: _categories.map((category) {
+                  return DropdownMenuItem(
+                    value: category,
+                    child: Text(category),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value!;
+                  });
+                },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please select a category';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _descriptionController,
                 decoration: const InputDecoration(
@@ -192,25 +271,89 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                     return 'Please enter a price';
                   }
                   if (double.tryParse(value) == null || double.parse(value) <= 0) {
-                    return 'Please enter a valid price';
+                    return 'Please enter a valid price greater than 0';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('In Stock:'),
+                  const SizedBox(width: 16),
+                  Switch(
+                    value: _inStock,
+                    onChanged: (value) {
+                      setState(() {
+                        _inStock = value;
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _ratingController,
+                decoration: const InputDecoration(
+                  labelText: 'Rating (1-5)',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a rating';
+                  }
+                  final rating = double.tryParse(value);
+                  if (rating == null || rating < 1 || rating > 5) {
+                    return 'Please enter a rating between 1 and 5';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 16),
               TextFormField(
-                controller: _stockController,
+                controller: _popularityController,
                 decoration: const InputDecoration(
-                  labelText: 'Stock Quantity',
+                  labelText: 'Popularity',
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Please enter stock quantity';
+                    return 'Please enter a popularity score';
                   }
                   if (int.tryParse(value) == null || int.parse(value) < 0) {
-                    return 'Please enter a valid stock quantity';
+                    return 'Please enter a valid popularity score';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _featuresController,
+                decoration: const InputDecoration(
+                  labelText: 'Features (comma-separated)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter at least one feature';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _tagsController,
+                decoration: const InputDecoration(
+                  labelText: 'Tags (comma-separated)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 2,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter at least one tag';
                   }
                   return null;
                 },
@@ -271,9 +414,13 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
             columns: const [
               DataColumn(label: Text('Image')),
               DataColumn(label: Text('Name')),
+              DataColumn(label: Text('Category')),
               DataColumn(label: Text('Price')),
-              DataColumn(label: Text('Stock')),
-              DataColumn(label: Text('Sold')),
+              DataColumn(label: Text('In Stock')),
+              DataColumn(label: Text('Rating')),
+              DataColumn(label: Text('Popularity')),
+              DataColumn(label: Text('Features')),
+              DataColumn(label: Text('Tags')),
               DataColumn(label: Text('Actions')),
             ],
             rows: snapshot.data!.docs.map((doc) {
@@ -287,7 +434,7 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                       color: Colors.grey[200],
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: data['imageUrl'] != null
+                    child: data['imageUrl'] != null && data['imageUrl'].isNotEmpty
                         ? Image.network(data['imageUrl'], fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) {
                       return const Icon(Icons.pets);
                     })
@@ -295,9 +442,13 @@ class _ProductManagementPageState extends State<ProductManagementPage> {
                   ),
                 ),
                 DataCell(Text(data['name']?.toString() ?? 'Unknown')),
-                DataCell(Text('\$${data['price']?.toStringAsFixed(2) ?? '0.00'}')),
-                DataCell(Text(data['stock']?.toString() ?? '0')),
-                DataCell(Text(data['sold']?.toString() ?? '0')),
+                DataCell(Text(data['category']?.toString() ?? 'Unknown')),
+                DataCell(Text('\$${((data['price'] ?? data['originalPrice']) as num?)?.toStringAsFixed(2) ?? '0.00'}')), // Fallback to originalPrice
+                DataCell(Text(data['inStock'] == true ? 'Yes' : 'No')),
+                DataCell(Text(data['rating']?.toString() ?? '0.0')),
+                DataCell(Text(data['popularity']?.toString() ?? '0')),
+                DataCell(Text((data['features'] as List<dynamic>?)?.join(', ') ?? 'None')),
+                DataCell(Text((data['tags'] as List<dynamic>?)?.join(', ') ?? 'None')),
                 DataCell(
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),

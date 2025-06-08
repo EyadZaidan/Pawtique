@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 class ProfileInfoPage extends StatefulWidget {
   const ProfileInfoPage({super.key});
@@ -15,7 +15,6 @@ class ProfileInfoPage extends StatefulWidget {
 class _ProfileInfoPageState extends State<ProfileInfoPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
   final _formKey = GlobalKey<FormState>();
   final ImagePicker _picker = ImagePicker();
 
@@ -23,7 +22,7 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
   String _email = 'Loading...';
   String _phone = 'Loading...';
   String _address = 'Not provided';
-  String? _imageUrl;
+  String? _imagePath; // Changed from _imageUrl to _imagePath for local storage
   File? _imageFile;
   bool _isEditing = false;
   bool _isLoading = true;
@@ -32,7 +31,6 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
   @override
   void initState() {
     super.initState();
-    // Add a slight delay to ensure Firebase is fully initialized
     Future.delayed(Duration.zero, _loadUserInfo);
   }
 
@@ -46,32 +44,26 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
     if (user != null) {
       try {
         debugPrint('Loading user info for UID: ${user.uid}');
-
-        // First set basic info from Firebase Auth
         setState(() {
           _displayName = user.displayName ?? 'User';
           _email = user.email ?? 'Not provided';
         });
 
-        // Then try to get additional info from Firestore
         final userDoc = await _firestore.collection('users').doc(user.uid).get();
-
         if (userDoc.exists) {
           final userData = userDoc.data();
           debugPrint('User data retrieved: $userData');
-
           if (userData != null) {
             setState(() {
               _displayName = userData['displayName'] ?? user.displayName ?? 'User';
               _email = userData['email'] ?? user.email ?? 'Not provided';
               _phone = userData['phone'] ?? 'Not provided';
               _address = userData['address'] ?? 'Not provided';
-              _imageUrl = userData['imageUrl'];
+              _imagePath = userData['imagePath']; // Load local path instead of URL
             });
           }
         } else {
           debugPrint('User document does not exist. Creating one.');
-          // Create a user document if it doesn't exist
           await _firestore.collection('users').doc(user.uid).set({
             'displayName': user.displayName ?? 'User',
             'email': user.email,
@@ -85,7 +77,6 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
         setState(() {
           _errorMessage = 'Failed to load profile: $e';
         });
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading profile: $e')),
         );
@@ -111,12 +102,11 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
         maxHeight: 512,
         imageQuality: 75,
       );
-
       if (pickedFile != null) {
         setState(() {
           _imageFile = File(pickedFile.path);
         });
-        await _uploadImage();
+        await _saveImageLocally();
       }
     } catch (e) {
       debugPrint('Error picking image: $e');
@@ -126,88 +116,72 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
     }
   }
 
-// In profile_info_page.dart: Update the _uploadImage method
+  Future<void> _saveImageLocally() async {
+    if (_imageFile == null) return;
+    final user = _auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No user signed in')),
+      );
+      return;
+    }
 
-  Future<void> _uploadImage() async {
-    if (_imageFile != null) {
-      final user = _auth.currentUser;
-      if (user != null) {
-        try {
-          // Show loading indicator
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Uploading image...')),
-          );
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saving image locally...')),
+      );
 
-          // Ensure Firebase Storage is properly initialized before using it
-          // Create a more specific reference path with better structure
-          final storageRef = FirebaseStorage.instance.ref();
-          final profileImageRef = storageRef.child('profile_images/${user.uid}/profile_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      // Get the app's documents directory
+      final directory = await getApplicationDocumentsDirectory();
+      final userDir = Directory('${directory.path}/profile_images/${user.uid}');
 
-          // Use putFile with SettableMetadata for better control
-          final uploadTask = await profileImageRef.putFile(
-            _imageFile!,
-            SettableMetadata(
-              contentType: 'image/jpeg',
-              customMetadata: {'uploaded_by': user.uid},
-            ),
-          );
-
-          // Get download URL after successful upload
-          final url = await profileImageRef.getDownloadURL();
-
-          // Update Firestore document with the new image URL
-          await _firestore.collection('users').doc(user.uid).update({
-            'imageUrl': url,
-            'lastProfileUpdateTime': FieldValue.serverTimestamp(),
-          });
-
-          setState(() {
-            _imageUrl = url;
-            _imageFile = null; // Clear the file reference after successful upload
-          });
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Profile picture updated successfully!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        } catch (e) {
-          debugPrint('Error uploading image: $e');
-          // Provide more specific error feedback
-          String errorMessage = 'Failed to upload image';
-          if (e is FirebaseException) {
-            switch (e.code) {
-              case 'unauthorized':
-                errorMessage = 'You do not have permission to upload files';
-                break;
-              case 'canceled':
-                errorMessage = 'Upload was cancelled';
-                break;
-              case 'storage/object-not-found':
-                errorMessage = 'Storage location not found. Check your Firebase configuration';
-                break;
-              default:
-                errorMessage = 'Upload error: ${e.message}';
-            }
-          }
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMessage),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      // Create the directory if it doesn't exist
+      if (!await userDir.exists()) {
+        await userDir.create(recursive: true);
       }
+
+      // Generate a unique filename
+      final fileName = 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final filePath = '${userDir.path}/$fileName';
+
+      // Copy the image to the new location
+      await _imageFile!.copy(filePath);
+      debugPrint('Image saved to: $filePath');
+
+      // Update Firestore with the local file path
+      await _firestore.collection('users').doc(user.uid).update({
+        'imagePath': filePath, // Store the local path instead of a URL
+        'lastProfileUpdateTime': FieldValue.serverTimestamp(),
+      });
+
+      setState(() {
+        _imagePath = filePath;
+        _imageFile = null;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile picture updated successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error saving image locally: $e');
+      String errorMessage = 'Failed to save image';
+      if (e is FileSystemException) {
+        errorMessage = 'File system error: ${e.message}';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
+      );
     }
   }
+
   void _saveChanges() {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       final user = _auth.currentUser;
       if (user != null) {
-        // Show loading indicator
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Saving changes...')),
         );
@@ -296,13 +270,13 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
                         onTap: _isEditing ? _pickImage : null,
                         child: CircleAvatar(
                           radius: 60,
-                          backgroundImage: _imageUrl != null
-                              ? NetworkImage(_imageUrl!)
+                          backgroundImage: _imagePath != null
+                              ? FileImage(File(_imagePath!))
                               : _imageFile != null
                               ? FileImage(_imageFile!) as ImageProvider
                               : null,
                           backgroundColor: Colors.grey.shade200,
-                          child: _imageUrl == null && _imageFile == null
+                          child: _imagePath == null && _imageFile == null
                               ? const Icon(Icons.person, size: 60, color: Colors.grey)
                               : null,
                         ),

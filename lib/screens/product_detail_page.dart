@@ -3,10 +3,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/product.dart';
 import '../services/cart_service.dart';
 import '../services/review_service.dart';
-import '../services/notification_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../widgets/auth_required_message.dart';
 import './cart_page.dart';
+import '../LocalFavoritesManager.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -20,23 +20,51 @@ class ProductDetailPage extends StatefulWidget {
 class _ProductDetailPageState extends State<ProductDetailPage> with SingleTickerProviderStateMixin {
   final CartService _cartService = CartService();
   final ReviewService _reviewService = ReviewService();
-  final NotificationService _notificationService = NotificationService();
   int _quantity = 1;
   bool _isAddingToCart = false;
   bool _isSubmittingReview = false;
-  bool _isRegistering = false;
   late TabController _tabController;
   final TextEditingController _reviewController = TextEditingController();
   double _userRating = 5.0;
 
   List<Review> _reviews = [];
   bool _isLoadingReviews = true;
+  bool _isFavorite = false;
+  bool _isCheckingFavorite = false;
+  bool _initialFavoriteState = false;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadReviews();
+    _checkIfFavorite();
+  }
+
+  Future<void> _checkIfFavorite() async {
+    setState(() {
+      _isCheckingFavorite = true;
+    });
+
+    try {
+      final isFav = await LocalFavoritesManager.isFavorite(widget.product.id);
+      if (mounted) {
+        setState(() {
+          _isFavorite = isFav;
+          _initialFavoriteState = isFav;
+          _isCheckingFavorite = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCheckingFavorite = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error checking favorites: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _loadReviews() async {
@@ -127,52 +155,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
       if (mounted) {
         setState(() {
           _isAddingToCart = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _registerForNotification() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => const AuthRequiredMessage(action: 'receive notifications'),
-      );
-      return;
-    }
-
-    setState(() {
-      _isRegistering = true;
-    });
-
-    try {
-      await _notificationService.registerForProductAvailability(
-        userId: user.uid,
-        productId: widget.product.id,
-        userEmail: user.email ?? '',
-      );
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You will be notified when this product becomes available'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error registering for notification: $e'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRegistering = false;
         });
       }
     }
@@ -347,23 +329,56 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
     }
   }
 
+  Future<void> _toggleFavorite() async {
+    try {
+      final wasFavorite = _isFavorite;
+      await LocalFavoritesManager.toggleFavorite(widget.product.id);
+
+      if (mounted) {
+        setState(() {
+          _isFavorite = !wasFavorite;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isFavorite ? 'Added to favorites' : 'Removed from favorites'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating favorites: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    print('ProductDetailPage theme mode: ${Theme.of(context).brightness}, onSurface: ${Theme.of(context).colorScheme.onSurface}');
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.product.name),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context, _initialFavoriteState != _isFavorite);
+          },
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.favorite_border),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Added to favorites'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
-            tooltip: 'Add to favorites',
+          _isCheckingFavorite
+              ? const CircularProgressIndicator()
+              : IconButton(
+            icon: Icon(
+              _isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: _isFavorite ? Colors.red : null,
+            ),
+            onPressed: _toggleFavorite,
+            tooltip: _isFavorite ? 'Remove from favorites' : 'Add to favorites',
           ),
           IconButton(
             icon: const Icon(Icons.share),
@@ -451,28 +466,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
                             ),
                           ),
                         ),
-                        if (widget.product.discountText().isNotEmpty)
-                          Positioned(
-                            top: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
-                                borderRadius: BorderRadius.only(
-                                  bottomLeft: Radius.circular(8),
-                                ),
-                              ),
-                              child: Text(
-                                widget.product.discountText(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ),
                         if (!widget.product.inStock)
                           Positioned.fill(
                             child: Container(
@@ -568,27 +561,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
                             ],
                           ),
                           const SizedBox(height: 16),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '\$${widget.product.price.toStringAsFixed(2)}',
-                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              if (widget.product.originalPrice != null &&
-                                  widget.product.originalPrice! > widget.product.price)
-                                Text(
-                                  '\$${widget.product.originalPrice!.toStringAsFixed(2)}',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    decoration: TextDecoration.lineThrough,
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                  ),
-                                ),
-                            ],
+                          Text(
+                            widget.product.formattedPrice(),
+                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 24),
                           Text(
@@ -690,21 +668,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
                             ),
                             const SizedBox(height: 24),
                           ],
-                          if (!widget.product.inStock) ...[
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                icon: const Icon(Icons.notifications_active),
-                                label: Text(_isRegistering ? 'Processing...' : 'Notify Me When Available'),
-                                onPressed: _isRegistering ? null : _registerForNotification,
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                  backgroundColor: Theme.of(context).colorScheme.secondary,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                          ],
                         ],
                       ),
                     ),
@@ -720,7 +683,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Summary of reviews
                       Card(
                         elevation: 2,
                         child: Padding(
@@ -783,7 +745,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
 
                       const SizedBox(height: 24),
 
-                      // Write a review section
                       Text(
                         'Write a Review',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
@@ -858,7 +819,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
 
                       const SizedBox(height: 24),
 
-                      // Customer Reviews
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -877,7 +837,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
                       ),
                       const SizedBox(height: 16),
 
-                      // Display actual reviews from Firestore
                       _isLoadingReviews
                           ? const Center(child: CircularProgressIndicator())
                           : _reviews.isEmpty
@@ -941,7 +900,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
                                         IconButton(
                                           icon: Icon(
                                             Icons.thumb_up,
-                                            color: review.helpfulUserIds.contains(FirebaseAuth.instance.currentUser?.uid)
+                                            color: review.helpfulUserIds
+                                                .contains(FirebaseAuth.instance.currentUser?.uid)
                                                 ? Theme.of(context).colorScheme.primary
                                                 : Colors.grey,
                                             size: 16,
@@ -979,7 +939,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
               ),
             ],
           ),
-          // Bottom bar for actions
           if (widget.product.inStock)
             Positioned(
               left: 0,
@@ -1028,7 +987,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> with SingleTicker
                             : const Text('Buy Now'),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
-                           backgroundColor: Theme.of(context).colorScheme.secondary,
+                          backgroundColor: Theme.of(context).colorScheme.secondary,
                         ),
                       ),
                     ),

@@ -267,8 +267,8 @@ class _CustomerDetailPageState extends State<CustomerDetailPage> {
                                     style: const TextStyle(fontWeight: FontWeight.bold),
                                   ),
                                   onTap: () {
-                                    Navigator.pushNamed(
-                                      context,
+                                    debugPrint('CustomerDetailPage: Navigating to /order-details with orderId: ${order.id}');
+                                    Navigator.of(context, rootNavigator: true).pushNamed(
                                       '/order-details',
                                       arguments: order.id,
                                     );

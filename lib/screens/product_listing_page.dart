@@ -1,12 +1,3 @@
-// File: product_listing_page.dart
-// Fixes:
-// 1. Fixed incorrect discount percentage calculation
-// 2. Improved error handling for empty image URLs
-// 3. Fixed cart service initialization
-// 4. Added proper null checking for fields
-// 5. Fixed sorting logic for products
-// 6. Removed "Add to cart" button and "In Stock" text to fix overflow
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -15,9 +6,12 @@ import '../models/product.dart';
 import '../services/cart_service.dart';
 import '../widgets/auth_required_message.dart';
 import 'product_detail_page.dart';
+import 'cart_page.dart';
 
 class ProductListingPage extends StatefulWidget {
-  const ProductListingPage({super.key});
+  final String? initialCategory;
+
+  const ProductListingPage({super.key, this.initialCategory});
 
   @override
   _ProductListingPageState createState() => _ProductListingPageState();
@@ -25,12 +19,26 @@ class ProductListingPage extends StatefulWidget {
 
 class _ProductListingPageState extends State<ProductListingPage> {
   String _searchQuery = '';
-  String _selectedCategory = 'All';
-  final List<String> _categories = ['All', 'Food', 'Toys', 'Grooming', 'Accessories'];
+  late String _selectedCategory;
+  final List<String> _categories = [
+    'All',
+    'Dog Food',
+    'Cat Food',
+    'Healthcare',
+    'Dog Treats',
+    'Cat Treats',
+    'Litter Supplies',
+    'Toys',
+    'Walk Essentials',
+    'Grooming',
+    'Bowls and Feeders',
+    'Beddings',
+    'Clothing',
+  ];
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
   List<String> _suggestions = [];
-  final CartService _cartService = CartService(); // Fixed initialization
+  final CartService _cartService = CartService();
   String _sortBy = 'popular';
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -55,9 +63,7 @@ class _ProductListingPageState extends State<ProductListingPage> {
           .get();
 
       setState(() {
-        _suggestions = snapshot.docs
-            .map((doc) => doc['name'] as String)
-            .toList();
+        _suggestions = snapshot.docs.map((doc) => doc['name'] as String).toList();
         _isLoading = false;
       });
     } catch (e) {
@@ -78,6 +84,9 @@ class _ProductListingPageState extends State<ProductListingPage> {
   @override
   void initState() {
     super.initState();
+    _selectedCategory = widget.initialCategory != null && _categories.contains(widget.initialCategory)
+        ? widget.initialCategory!
+        : 'All';
     _searchController.addListener(() {
       _fetchSuggestions(_searchController.text);
     });
@@ -174,8 +183,11 @@ class _ProductListingPageState extends State<ProductListingPage> {
           IconButton(
             icon: const Icon(Icons.shopping_cart),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Cart page coming soon!')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CartPage(),
+                ),
               );
             },
             tooltip: 'View cart',
@@ -183,9 +195,7 @@ class _ProductListingPageState extends State<ProductListingPage> {
         ],
       ),
       body: user == null
-          ? const Center(
-        child: AuthRequiredMessage(action: 'view products'),
-      )
+          ? const Center(child: AuthRequiredMessage(action: 'view products'))
           : Column(
         children: [
           Padding(
@@ -291,9 +301,7 @@ class _ProductListingPageState extends State<ProductListingPage> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(
                     child: CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.blue,
-                      ),
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
                     ),
                   );
                 }
@@ -316,7 +324,6 @@ class _ProductListingPageState extends State<ProductListingPage> {
                   products = products.where((product) => product.category == _selectedCategory).toList();
                 }
 
-                // Fixed sorting logic
                 switch (_sortBy) {
                   case 'price_asc':
                     products.sort((a, b) => a.price.compareTo(b.price));
@@ -329,7 +336,6 @@ class _ProductListingPageState extends State<ProductListingPage> {
                     break;
                   case 'popular':
                   default:
-                  // Fixed null check for popularity
                     products.sort((a, b) => (b.popularity ?? 0).compareTo(a.popularity ?? 0));
                     break;
                 }
@@ -408,11 +414,7 @@ class ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Fixed discount display logic
-    final discountPercentage = product.calculateActualDiscountPercentage();
-    final bool showDiscount = discountPercentage > 0 || (product.price <= 0 && product.originalPrice != null && product.originalPrice! > 0);
-
-    // Improved image URL validation
+    print('Current theme mode: ${Theme.of(context).brightness}, onSurface: ${Theme.of(context).colorScheme.onSurface}');
     final String imageUrlToUse = (product.imageUrl != null && product.imageUrl.isNotEmpty)
         ? product.imageUrl
         : 'https://via.placeholder.com/150';
@@ -446,9 +448,7 @@ class ProductCard extends StatelessWidget {
                     width: double.infinity,
                     placeholder: (context, url) => const Center(
                       child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.blue,
-                        ),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
                       ),
                     ),
                     errorWidget: (context, url, error) {
@@ -461,30 +461,6 @@ class ProductCard extends StatelessWidget {
                     },
                   ),
                 ),
-
-                if (showDiscount)
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(8),
-                        ),
-                      ),
-                      child: Text(
-                        product.price <= 0 ? 'FREE' : '${discountPercentage.toInt()}% OFF',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ),
-
                 if (!product.inStock)
                   Positioned.fill(
                     child: Container(
@@ -525,34 +501,15 @@ class ProductCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4.0),
-
-                    // Fixed price display
-                    Row(
-                      children: [
-                        Text(
-                          product.formattedPrice(),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: product.price <= 0 ? Colors.red : Colors.green,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (product.originalPrice != null && product.originalPrice! > product.price)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 4.0),
-                            child: Text(
-                              product.formattedOriginalPrice(),
-                              style: TextStyle(
-                                fontSize: 12,
-                                decoration: TextDecoration.lineThrough,
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                              ),
-                            ),
-                          ),
-                      ],
+                    Text(
+                      product.formattedPrice(),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.onSurface,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-
-                    // Removed star ratings, "In Stock" text and "Add to cart" button to fix overflow
                   ],
                 ),
               ),

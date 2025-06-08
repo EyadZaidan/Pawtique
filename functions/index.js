@@ -1,95 +1,48 @@
 const functions = require('firebase-functions');
-const nodemailer = require('nodemailer');
-
 const admin = require('firebase-admin');
+const emailjs = require('@emailjs/nodejs');
+const crypto = require('crypto');
+
 admin.initializeApp();
 
-const transporter = nodemailer.createTransport({
-  service: functions.config().email.service,
-  auth: {
-    user: functions.config().email.user,
-    pass: functions.config().email.pass,
-  },
-});
+emailjs.init("VXgp94DZXU0uolLjz");
 
-exports.sendOrderConfirmationEmail = functions.firestore
-  .document('orders/{orderId}')
+exports.sendVerificationEmail = functions.firestore
+  .document('users/{userId}')
   .onCreate(async (snap, context) => {
-    const order = snap.data();
-    const orderId = context.params.orderId;
+    const userData = snap.data();
+    const email = userData.email;
+    const fullName = userData.fullName;
+    const userId = context.params.userId;
 
-    console.log('New order created:', order);
-
-    const confirmationNumber = order.confirmationNumber || 'N/A';
-    const userEmail = order.email;
-    const items = order.items || [];
-    const totalPrice = order.totalPrice || 0;
-    const name = order.name || 'Customer';
-    const shippingAddress = order.shippingAddress || 'N/A';
-    const paymentMethod = order.paymentMethod || 'N/A';
-    const timestamp = order.timestamp ? order.timestamp.toDate().toLocaleString() : new Date().toLocaleString();
-
-    if (!userEmail) {
-      console.error('Error: Email field is missing in order document:', orderId);
-      throw new functions.https.HttpsError('invalid-argument', 'Email field is required');
+    if (!email || !fullName) {
+      console.error("Missing email or fullName in user data.");
+      return null;
     }
 
-    const itemsListText = items.length > 0
-      ? items.map(item => `${item.name} - Quantity: ${item.quantity} - Price: $${item.price.toFixed(2)}`).join('\n')
-      : 'No items found';
-    const itemsListHtml = items.length > 0
-      ? items.map(item => `<li>${item.name} - Quantity: ${item.quantity} - Price: $${item.price.toFixed(2)}</li>`).join('')
-      : '<li>No items found</li>';
+    const token = crypto.randomBytes(32).toString('hex');
+    const verificationLink = `https://pawtique3.page.link/verify?token=${token}&uid=${userId}`;
 
-    const mailOptions = {
-      from: functions.config().email.user,
-      to: userEmail,
-      subject: `Order Confirmation - ${confirmationNumber}`,
-      text: `
-        Dear ${name},
+    // Save token to Firestore
+    await admin.firestore().collection('users').doc(userId).update({
+      verificationToken: token,
+    });
 
-        Thank you for your order with Pawtique3! Below are the details of your purchase:
-
-        Order Confirmation Number: ${confirmationNumber}
-        Order Date: ${timestamp}
-        Items:
-        ${itemsListText}
-        Total Price: $${totalPrice.toFixed(2)}
-        Shipping Address: ${shippingAddress}
-        Payment Method: ${paymentMethod}
-
-        We will notify you once your order has shipped.
-
-        Best regards,
-        The Pawtique3 Team
-      `,
-      html: `
-        <h2>Order Confirmation - ${confirmationNumber}</h2>
-        <p>Dear ${name},</p>
-        <p>Thank you for your order with Pawtique3! Below are the details of your purchase:</p>
-        <ul>
-          <li><strong>Order Confirmation Number:</strong> ${confirmationNumber}</li>
-          <li><strong>Order Date:</strong> ${timestamp}</li>
-          <li><strong>Items:</strong>
-            <ul>
-              ${itemsListHtml}
-            </ul>
-          </li>
-          <li><strong>Total Price:</strong> $${totalPrice.toFixed(2)}</li>
-          <li><strong>Shipping Address:</strong> ${shippingAddress}</li>
-          <li><strong>Payment Method:</strong> ${paymentMethod}</li>
-        </ul>
-        <p>We will notify you once your order has shipped.</p>
-        <p>Best regards,<br>The Pawtique3 Team</p>
-      `,
+    const templateParams = {
+      to_email: email,
+      to_name: fullName,
+      verification_link: verificationLink,
     };
 
     try {
-      await transporter.sendMail(mailOptions);
-      console.log(`Email sent to ${userEmail} for order ${confirmationNumber}`);
-      return null;
+      await emailjs.send("service_xjfv928", "template_v761fvr", templateParams, {
+        publicKey: "VXgp94DZXU0uolLjz",
+      });
+
+      console.log(`Verification email sent to ${email}`);
     } catch (error) {
-      console.error(`Error sending email for order ${confirmationNumber}:`, error);
-      throw new functions.https.HttpsError('internal', 'Failed to send email');
+      console.error("Error sending email:", error);
     }
+
+    return null;
   });

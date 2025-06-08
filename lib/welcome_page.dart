@@ -38,7 +38,7 @@ class WelcomePage extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Image.asset(
-                        'assets/image_8.png',
+                        'assets/new_app_icon.png',
                         height: 40,
                       ),
                       const SizedBox(width: 8),

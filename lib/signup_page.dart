@@ -4,11 +4,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:google_api_availability/google_api_availability.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:uuid/uuid.dart';
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server.dart';
+import 'package:firebase_dynamic_links/firebase_dynamic_links.dart';
 import 'login_page.dart';
 import 'main_screen.dart';
+import 'verify_otp_page.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -28,36 +29,96 @@ class _SignUpPageState extends State<SignUpPage> {
   bool _confirmPasswordVisible = false;
   String? _errorMessage;
 
-  // EmailJS configuration
-  final String _emailJsServiceId = 'service_41h7ne3';
-  final String _emailJsTemplateId = 'template_n2hlzwi'; // Updated Template ID
-  final String _emailJsUserId = 'qXfxR1hhMArIyBk2j';
+  @override
+  void initState() {
+    super.initState();
+    _setupDynamicLinks();
+  }
 
-  Future<void> _sendVerificationEmail(String email, String verificationToken, String userId) async {
-    final dynamicLink = 'https://pawtique3.page.link/verify?token=$verificationToken&userId=$userId';
-    final url = Uri.parse('https://api.emailjs.com/api/v1.0/email/send');
-    try {
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'service_id': _emailJsServiceId,
-          'template_id': _emailJsTemplateId,
-          'user_id': _emailJsUserId,
-          'template_params': {
-            'to_email': email,
-            'verify_url': dynamicLink,
-            'to_name': _fullNameController.text.trim(),
-          },
-        }),
-      );
-      print('EmailJS Response: ${response.statusCode} - ${response.body}');
-      if (response.statusCode != 200) {
-        throw Exception('Failed to send verification email: ${response.statusCode} - ${response.body}');
+  Future<void> _setupDynamicLinks() async {
+    FirebaseDynamicLinks.instance.onLink.listen((PendingDynamicLinkData? dynamicLink) async {
+      if (dynamicLink != null) {
+        final Uri deepLink = dynamicLink.link;
+        if (deepLink.path == '/verify-email') {
+          final String? oobCode = deepLink.queryParameters['oobCode'];
+          if (oobCode != null) {
+            try {
+              await _auth.applyActionCode(oobCode);
+              final user = _auth.currentUser;
+              if (user != null) {
+                await user.reload();
+                if (user.emailVerified) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Email verified successfully!')),
+                  );
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginPage()),
+                  );
+                }
+              }
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error verifying email: $e')),
+              );
+            }
+          }
+        }
       }
+    }, onError: (Object error, StackTrace stackTrace) {
+      print('Dynamic link error: $error');
+    });
+
+    final PendingDynamicLinkData? initialLink =
+    await FirebaseDynamicLinks.instance.getInitialLink();
+    if (initialLink != null) {
+      final Uri deepLink = initialLink.link;
+      if (deepLink.path == '/verify-email') {
+        final String? oobCode = deepLink.queryParameters['oobCode'];
+        if (oobCode != null) {
+          try {
+            await _auth.applyActionCode(oobCode);
+            final user = _auth.currentUser;
+            if (user != null) {
+              await user.reload();
+              if (user.emailVerified) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Email verified successfully!')),
+                );
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginPage()),
+                );
+              }
+            }
+          } catch (e) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error verifying email: $e')),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  String _generateOtp() {
+    return (100000 + DateTime.now().millisecondsSinceEpoch % 900000).toString().substring(0, 6);
+  }
+
+  Future<void> _sendOtpEmail(String email, String otp) async {
+    final smtpServer = gmail('shahid.zaidan2024@gmail.com', 'uuuo lpyj vfzw fohd'); // Use App Password
+    final message = Message()
+      ..from = Address('shahid.zaidan2024@gmail.com')
+      ..recipients.add(email)
+      ..subject = 'Your Verification Code'
+      ..text = 'Your verification code is: $otp. Please enter it in the app to verify your account.';
+
+    try {
+      await send(message, smtpServer);
+      print('OTP email sent to $email');
     } catch (e) {
-      print('EmailJS Error: $e');
-      throw Exception('Failed to send verification email: $e');
+      print('Error sending OTP email: $e');
+      throw Exception('Failed to send verification email');
     }
   }
 
@@ -103,9 +164,14 @@ class _SignUpPageState extends State<SignUpPage> {
     });
 
     try {
-      // Test network connectivity
-      final testResponse = await http.get(Uri.parse('https://www.google.com'));
-      print('Test Network: ${testResponse.statusCode}');
+      // Check if email already exists
+      final signInMethods = await _auth.fetchSignInMethodsForEmail(email);
+      if (signInMethods.isNotEmpty) {
+        setState(() {
+          _errorMessage = 'This email is already in use. Please use a different email.';
+        });
+        return;
+      }
 
       UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -116,23 +182,37 @@ class _SignUpPageState extends State<SignUpPage> {
         await userCredential.user!.updateDisplayName(_fullNameController.text.trim());
         await userCredential.user!.reload();
 
-        final verificationToken = const Uuid().v4();
-        await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-          'email': email,
-          'fullName': _fullNameController.text.trim(),
-          'createdAt': FieldValue.serverTimestamp(),
-          'isVerified': false,
-          'verificationToken': verificationToken,
-        });
+        final otp = _generateOtp();
+        await _sendOtpEmail(email, otp);
 
-        await _sendVerificationEmail(email, verificationToken, userCredential.user!.uid);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('We have sent you an email to verify your account')),
-        );
+        // Write to Firestore with error handling
+        try {
+          await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
+            'email': email,
+            'fullName': _fullNameController.text.trim(),
+            'createdAt': FieldValue.serverTimestamp(),
+            'isVerified': false,
+            'isAdmin': false,
+            'otp': otp,
+            'otpExpiry': DateTime.now().add(const Duration(minutes: 10)),
+          });
+          print('Firestore document created for UID: ${userCredential.user!.uid}');
+        } catch (e) {
+          print('Firestore write error: $e');
+          setState(() {
+            _errorMessage = 'Failed to save user data: $e';
+          });
+          return;
+        }
 
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const LoginPage()),
+          MaterialPageRoute(
+            builder: (context) => VerifyOtpPage(
+              email: email,
+              userId: userCredential.user!.uid,
+            ),
+          ),
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -170,7 +250,7 @@ class _SignUpPageState extends State<SignUpPage> {
         if (availability != GooglePlayServicesAvailability.success) {
           setState(() {
             _isLoading = false;
-            _errorMessage = 'Google Play Services is not available on this device.';
+            _errorMessage = 'Google Play Services is not available on this device. Please reinstall the app.';
           });
           return;
         }
@@ -212,6 +292,7 @@ class _SignUpPageState extends State<SignUpPage> {
             'fullName': googleUser.displayName,
             'createdAt': FieldValue.serverTimestamp(),
             'isVerified': true,
+            'isAdmin': false,
           });
         }
 
@@ -225,7 +306,7 @@ class _SignUpPageState extends State<SignUpPage> {
     } catch (e) {
       setState(() {
         if (e.toString().contains('ApiException: 10')) {
-          _errorMessage = 'Google Sign-In failed: Configuration error. Please check your setup or contact support.';
+          _errorMessage = 'Google Sign-In failed: Configuration error. Please check your setup or reinstall the app.';
         } else {
           _errorMessage = 'Google Sign-In failed: $e';
         }

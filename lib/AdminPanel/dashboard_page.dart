@@ -59,12 +59,9 @@ class _DashboardPageState extends State<DashboardPage> {
             const SizedBox(height: 24),
             _buildSalesChart(),
             const SizedBox(height: 24),
-            // Fixed row layout with Flexible widgets
             LayoutBuilder(
                 builder: (context, constraints) {
-                  // Use LayoutBuilder to get available width
                   if (constraints.maxWidth > 600) {
-                    // For larger screens, show side by side
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -74,7 +71,6 @@ class _DashboardPageState extends State<DashboardPage> {
                       ],
                     );
                   } else {
-                    // For smaller screens, stack vertically
                     return Column(
                       children: [
                         _buildRecentOrders(),
@@ -110,10 +106,10 @@ class _DashboardPageState extends State<DashboardPage> {
         final DateTime cutoffDate = _getCutoffDate();
         final orders = snapshot.data!.docs.where((doc) {
           final orderData = doc.data() as Map<String, dynamic>? ?? {};
-          final orderDate = orderData['orderDate'] is Timestamp
-              ? (orderData['orderDate'] as Timestamp).toDate()
+          final createdAt = orderData['createdAt'] is Timestamp
+              ? (orderData['createdAt'] as Timestamp).toDate()
               : null;
-          return orderDate != null && orderDate.isAfter(cutoffDate);
+          return createdAt != null && createdAt.isAfter(cutoffDate);
         }).toList();
         totalOrders = orders.length;
         for (var order in orders) {
@@ -126,19 +122,15 @@ class _DashboardPageState extends State<DashboardPage> {
         }
         debugPrint('DashboardPage: Loaded $totalOrders orders for stats');
 
-        // Using LayoutBuilder for responsive layout
         return LayoutBuilder(
             builder: (context, constraints) {
-              // Determine how many cards per row based on width
-              int crossAxisCount = constraints.maxWidth > 800 ? 3 :
-              constraints.maxWidth > 600 ? 2 : 1;
-
+              int crossAxisCount = constraints.maxWidth > 800 ? 3 : constraints.maxWidth > 600 ? 2 : 1;
               return GridView.builder(
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: crossAxisCount,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 16,
-                  childAspectRatio: 1.5, // Adjust for better card proportions
+                  childAspectRatio: 1.5,
                 ),
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -186,14 +178,11 @@ class _DashboardPageState extends State<DashboardPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(icon, size: 32, color: color), // Reduced icon size
+            Icon(icon, size: 32, color: color),
             const SizedBox(height: 8),
             Text(
               title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 4),
@@ -213,111 +202,111 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildSalesChart() {
     return Card(
-      elevation: 2,
-      child: Padding(
+        elevation: 2,
+        child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Sales Overview',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-            AspectRatio(
-              aspectRatio: 1.7, // Fixed aspect ratio for chart
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('orders')
-                    .orderBy('orderDate', descending: false)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    debugPrint('DashboardPage: Sales chart error: ${snapshot.error}');
-                    return const Center(child: Text('Error loading chart'));
-                  }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    debugPrint('DashboardPage: No data for sales chart');
-                    return const Center(child: Text('No sales data available'));
-                  }
-                  final List<FlSpot> spots = _generateChartData(snapshot.data!.docs);
-                  if (spots.isEmpty) {
-                    debugPrint('DashboardPage: No chart data within selected time range');
-                    return const Center(child: Text('No sales in selected time range'));
-                  }
-                  debugPrint('DashboardPage: Generated ${spots.length} chart spots');
-                  return LineChart(
-                    LineChartData(
-                      gridData: FlGridData(show: true),
-                      titlesData: FlTitlesData(
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 40,
-                            getTitlesWidget: (value, meta) {
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 4),
-                                child: Text(
-                                  '\$${value.toInt()}',
-                                  style: const TextStyle(fontSize: 10),
-                                  textAlign: TextAlign.right,
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 30,
-                            getTitlesWidget: (value, meta) {
-                              final days = _getDaysForTimeRange();
-                              if (value.toInt() >= 0 && value.toInt() < days) {
-                                final date = _getCutoffDate().add(Duration(days: value.toInt()));
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    _formatChartDate(date),
-                                    style: const TextStyle(fontSize: 9),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                );
-                              }
-                              return const Text('');
-                            },
-                          ),
-                        ),
-                        rightTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        topTitles: AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                      ),
-                      borderData: FlBorderData(show: true),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: spots,
-                          isCurved: true,
-                          color: Theme.of(context).primaryColor,
-                          barWidth: 3,
-                          isStrokeCapRound: true,
-                          dotData: FlDotData(show: false),
-                          belowBarData: BarAreaData(
-                            show: true,
-                            color: Theme.of(context).primaryColor.withOpacity(0.2),
-                          ),
-                        ),
-                      ],
-                      minY: 0, // Set minimum Y to 0
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+    child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+    const Text(
+    'Sales Overview',
+    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    ),
+    const SizedBox(height: 16),
+    AspectRatio(
+    aspectRatio: 1.7,
+    child: StreamBuilder<QuerySnapshot>(
+    stream: FirebaseFirestore.instance
+    .collection('orders')
+        .orderBy('createdAt', descending: false)
+        .snapshots(),
+    builder: (context, snapshot) {
+    if (snapshot.hasError) {
+    debugPrint('DashboardPage: Sales chart error: ${snapshot.error}');
+    return const Center(child: Text('Error loading chart'));
+    }
+    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+    debugPrint('DashboardPage: No data for sales chart');
+    return const Center(child: Text('No sales data available'));
+    }
+    final List<FlSpot> spots = _generateChartData(snapshot.data!.docs);
+    if (spots.isEmpty) {
+    debugPrint('DashboardPage: No chart data within selected time range');
+    return const Center(child: Text('No sales in selected time range'));
+    }
+    debugPrint('DashboardPage: Generated ${spots.length} chart spots');
+    return LineChart(
+    LineChartData(
+    gridData: FlGridData(show: true),
+    titlesData: FlTitlesData(
+    leftTitles: AxisTitles(
+    sideTitles: SideTitles(
+    showTitles: true,
+    reservedSize: 40,
+    getTitlesWidget: (value, meta) {
+    return Padding(
+    padding: const EdgeInsets.only(right: 4),
+    child: Text(
+    '\$${value.toInt()}',
+    style: const TextStyle(fontSize: 10),
+    textAlign: TextAlign.right,
+    ),
+    );
+    },
+    ),
+    ),
+    bottomTitles: AxisTitles(
+    sideTitles: SideTitles(
+    showTitles: true,
+    reservedSize: 30,
+    getTitlesWidget: (value, meta) {
+    final days = _getDaysForTimeRange();
+    if (value.toInt() >= 0 && value.toInt() < days) {
+    final date = _getCutoffDate().add(Duration(days: value.toInt()));
+    return Padding(
+    padding: const EdgeInsets.only(top: 4),
+    child: Text(
+    _formatChartDate(date),
+    style: const TextStyle(fontSize: 9),
+    textAlign: TextAlign.center,
+    ),
+    );
+    }
+    return const Text('');
+    },
+    ),
+    ),
+    rightTitles: AxisTitles(
+    sideTitles: SideTitles(showTitles: false),
+    ),
+    topTitles: AxisTitles(
+    sideTitles: SideTitles(showTitles: false),
+    ),
+    ),
+    borderData: FlBorderData(show: true),
+    lineBarsData: [
+    LineChartBarData(
+    spots: spots,
+    isCurved: true,
+    color: Theme.of(context).primaryColor,
+    barWidth: 3,
+    isStrokeCapRound: true,
+    dotData: FlDotData(show: false),
+    belowBarData: BarAreaData(
+    show: true,
+    color: Theme.of(context).primaryColor.withOpacity(0.2),
+    ),
+    ),
+    ],
+    minY: 0,
+    ),
+    );
+    },
+    ),
+    ),
+    ],
+    ),
+    )
     );
   }
 
@@ -330,11 +319,11 @@ class _DashboardPageState extends State<DashboardPage> {
     }
     for (var doc in docs) {
       final data = doc.data() as Map<String, dynamic>? ?? {};
-      final orderDate = data['orderDate'] is Timestamp
-          ? (data['orderDate'] as Timestamp).toDate()
+      final createdAt = data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
           : null;
-      if (orderDate != null && orderDate.isAfter(cutoffDate)) {
-        final dayDiff = orderDate.difference(cutoffDate).inDays;
+      if (createdAt != null && createdAt.isAfter(cutoffDate)) {
+        final dayDiff = createdAt.difference(cutoffDate).inDays;
         if (dayDiff >= 0 && dayDiff < days) {
           final currentTotal = dailyTotals[dayDiff] ?? 0.0;
           final amount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
@@ -363,7 +352,7 @@ class _DashboardPageState extends State<DashboardPage> {
             StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('orders')
-                  .orderBy('orderDate', descending: true)
+                  .orderBy('createdAt', descending: true)
                   .limit(5)
                   .snapshots(),
               builder: (context, snapshot) {
@@ -386,23 +375,23 @@ class _DashboardPageState extends State<DashboardPage> {
                   itemBuilder: (context, index) {
                     final order = snapshot.data!.docs[index];
                     final data = order.data() as Map<String, dynamic>? ?? {};
-                    final orderDate = data['orderDate'] is Timestamp
-                        ? (data['orderDate'] as Timestamp).toDate()
+                    final createdAt = data['createdAt'] is Timestamp
+                        ? (data['createdAt'] as Timestamp).toDate()
                         : null;
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
                       title: Text(
                         'Order #${order.id.substring(0, 8)}',
                         style: const TextStyle(fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis, // Prevent text overflow
+                        overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        '${data['customerName'] ?? 'Unknown'} - ${_formatDate(orderDate)}',
+                        '${data['customerName'] ?? 'Unknown'} - ${_formatDate(createdAt)}',
                         style: TextStyle(color: Colors.grey[600]),
-                        overflow: TextOverflow.ellipsis, // Prevent text overflow
+                        overflow: TextOverflow.ellipsis,
                       ),
                       trailing: SizedBox(
-                        width: 80, // Fixed width for status chip
+                        width: 80,
                         child: _getStatusChip(data['status']),
                       ),
                       onTap: () {
@@ -486,14 +475,14 @@ class _DashboardPageState extends State<DashboardPage> {
                       title: Text(
                         data['name'] ?? 'Unknown',
                         style: const TextStyle(fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis, // Prevent text overflow
+                        overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
                         '\$${data['price']?.toStringAsFixed(2) ?? '0.00'}',
                         style: TextStyle(color: Colors.grey[600]),
                       ),
                       trailing: SizedBox(
-                        width: 60, // Fixed width for trailing text
+                        width: 60,
                         child: Text(
                           '${data['sold'] ?? 0} sold',
                           style: TextStyle(
@@ -501,7 +490,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             fontSize: 14,
                           ),
                           textAlign: TextAlign.end,
-                          overflow: TextOverflow.ellipsis, // Prevent text overflow
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     );
@@ -569,7 +558,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       title: Text(
                         data['name'] ?? 'Unknown',
                         style: const TextStyle(fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis, // Prevent text overflow
+                        overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
                         'Stock: ${data['stock']?.toString() ?? '0'}',
@@ -685,15 +674,15 @@ class _DashboardPageState extends State<DashboardPage> {
       label: Text(
         status ?? 'Unknown',
         style: TextStyle(
-          color: chipColor,
-          fontSize: 12, // Smaller font size
+          color: chipColor == Colors.white ? Colors.black : Colors.white,
+          fontSize: 12,
         ),
         overflow: TextOverflow.ellipsis,
       ),
       backgroundColor: chipColor.withOpacity(0.2),
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, // Smaller tap target
-      padding: EdgeInsets.zero, // Remove padding
-      labelPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: -2), // Adjust label padding
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: EdgeInsets.zero,
+      labelPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: -2),
     );
   }
 }
