@@ -21,12 +21,44 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
   String _displayName = '';
   String _email = 'Loading...';
   String _phone = 'Loading...';
-  String _address = 'Not provided';
-  String? _imagePath; // Changed from _imageUrl to _imagePath for local storage
+  String _city = 'Not provided';
+  String _district = 'Not provided';
+  String _detailedAddress = 'Not provided';
+  String? _imagePath;
   File? _imageFile;
   bool _isEditing = false;
   bool _isLoading = true;
   String? _errorMessage;
+
+  // Turkey cities and districts (aligned with CartPage)
+  final Map<String, List<String>> _turkeyDistricts = {
+    'Istanbul': [
+      'Adalar', 'Arnavutköy', 'Ataşehir', 'Avcılar', 'Bağcılar', 'Bahçelievler',
+      'Bakırköy', 'Başakşehir', 'Bayrampaşa', 'Beşiktaş', 'Beykoz', 'Beylikdüzü',
+      'Beyoğlu', 'Büyükçekmece', 'Çatalca', 'Çekmeköy', 'Esenler', 'Esenyurt',
+      'Eyüpsultan', 'Fatih', 'Gaziosmanpaşa', 'Güngören', 'Kadıköy', 'Kağıthane',
+      'Kartal', 'Küçükçekmece', 'Maltepe', 'Pendik', 'Sancaktepe', 'Sarıyer',
+      'Silivri', 'Sultanbeyli', 'Sultangazi', 'Şile', 'Şişli', 'Tuzla',
+      'Ümraniye', 'Üsküdar', 'Zeytinburnu'
+    ],
+    'Ankara': [
+      'Akyurt', 'Altındağ', 'Ayaş', 'Bala', 'Beypazarı', 'Çamlıdere', 'Çankaya',
+      'Çubuk', 'Elmadağ', 'Etimesgut', 'Evren', 'Gölbaşı', 'Güdül', 'Haymana',
+      'Kahramankazan', 'Kalecik', 'Keçiören', 'Kızılcahamam', 'Mamak', 'Nallıhan',
+      'Polatlı', 'Pursaklar', 'Sincan', 'Şereflikoçhisar', 'Yenimahalle'
+    ],
+    'Izmir': [
+      'Aliağa', 'Balçova', 'Bayındır', 'Bayraklı', 'Bergama', 'Beydağ', 'Bornova',
+      'Buca', 'Çeşme', 'Çiğli', 'Dikili', 'Foça', 'Gaziemir', 'Güzelbahçe',
+      'Karabağlar', 'Karaburun', 'Karşıyaka', 'Kemalpaşa', 'Kınık', 'Kiraz',
+      'Konak', 'Menderes', 'Menemen', 'Narlıdere', 'Ödemiş', 'Seferihisar',
+      'Selçuk', 'Tire', 'Torbalı', 'Urla'
+    ],
+    'Bursa': ['Osmangazi', 'Nilüfer', 'Yıldırım', 'İnegöl', 'Gemlik'],
+  };
+
+  List<String> get _cities => _turkeyDistricts.keys.toList();
+  List<String> _availableDistricts = [];
 
   @override
   void initState() {
@@ -58,8 +90,11 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
               _displayName = userData['displayName'] ?? user.displayName ?? 'User';
               _email = userData['email'] ?? user.email ?? 'Not provided';
               _phone = userData['phone'] ?? 'Not provided';
-              _address = userData['address'] ?? 'Not provided';
-              _imagePath = userData['imagePath']; // Load local path instead of URL
+              _city = userData['city'] ?? 'Not provided';
+              _district = userData['district'] ?? 'Not provided';
+              _detailedAddress = userData['detailedAddress'] ?? 'Not provided';
+              _imagePath = userData['imagePath'];
+              _availableDistricts = _turkeyDistricts[_city] ?? [];
             });
           }
         } else {
@@ -68,8 +103,10 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
             'displayName': user.displayName ?? 'User',
             'email': user.email,
             'phone': 'Not provided',
-            'address': 'Not provided',
-            'createdAt': FieldValue.serverTimestamp(),
+            'city': 'Not provided',
+            'district': 'Not provided',
+            'detailedAddress': 'Not provided',
+            'createdAt': null,
           });
         }
       } catch (e) {
@@ -131,26 +168,21 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
         const SnackBar(content: Text('Saving image locally...')),
       );
 
-      // Get the app's documents directory
       final directory = await getApplicationDocumentsDirectory();
       final userDir = Directory('${directory.path}/profile_images/${user.uid}');
 
-      // Create the directory if it doesn't exist
       if (!await userDir.exists()) {
         await userDir.create(recursive: true);
       }
 
-      // Generate a unique filename
       final fileName = 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final filePath = '${userDir.path}/$fileName';
 
-      // Copy the image to the new location
       await _imageFile!.copy(filePath);
       debugPrint('Image saved to: $filePath');
 
-      // Update Firestore with the local file path
       await _firestore.collection('users').doc(user.uid).update({
-        'imagePath': filePath, // Store the local path instead of a URL
+        'imagePath': filePath,
         'lastProfileUpdateTime': FieldValue.serverTimestamp(),
       });
 
@@ -189,7 +221,9 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
         _firestore.collection('users').doc(user.uid).update({
           'displayName': _displayName,
           'phone': _phone,
-          'address': _address,
+          'city': _city,
+          'district': _district,
+          'detailedAddress': _detailedAddress,
           'updatedAt': FieldValue.serverTimestamp(),
         }).then((_) {
           setState(() {
@@ -352,17 +386,71 @@ class _ProfileInfoPageState extends State<ProfileInfoPage> {
                           validator: (value) => value!.isEmpty ? 'Please enter a phone number' : null,
                         ),
                         const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          value: _city == 'Not provided' ? null : _city,
+                          decoration: const InputDecoration(
+                            labelText: 'City *',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.location_city),
+                          ),
+                          hint: const Text('Select a city'),
+                          items: _cities.map((String city) {
+                            return DropdownMenuItem<String>(
+                              value: city,
+                              child: Text(city),
+                            );
+                          }).toList(),
+                          onChanged: _isEditing
+                              ? (String? newValue) {
+                            if (newValue != null) {
+                              setState(() {
+                                _city = newValue;
+                                _availableDistricts = _turkeyDistricts[newValue] ?? [];
+                                _district = 'Not provided';
+                              });
+                            }
+                          }
+                              : null,
+                          validator: (value) => value == null || value == 'Not provided' ? 'Please select a city' : null,
+                        ),
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          value: _district == 'Not provided' ? null : _district,
+                          decoration: const InputDecoration(
+                            labelText: 'District *',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.map),
+                          ),
+                          hint: const Text('Select a district'),
+                          items: _availableDistricts.map((String district) {
+                            return DropdownMenuItem<String>(
+                              value: district,
+                              child: Text(district),
+                            );
+                          }).toList(),
+                          onChanged: _isEditing
+                              ? (String? newValue) {
+                            if (newValue != null) {
+                              setState(() {
+                                _district = newValue;
+                              });
+                            }
+                          }
+                              : null,
+                          validator: (value) => value == null || value == 'Not provided' ? 'Please select a district' : null,
+                        ),
+                        const SizedBox(height: 16),
                         TextFormField(
-                          initialValue: _address,
+                          initialValue: _detailedAddress,
                           enabled: _isEditing,
                           maxLines: 3,
                           decoration: const InputDecoration(
-                            labelText: 'Address',
+                            labelText: 'Detailed Address',
                             border: OutlineInputBorder(),
                             prefixIcon: Icon(Icons.home),
                             alignLabelWithHint: true,
                           ),
-                          onSaved: (value) => _address = value ?? _address,
+                          onSaved: (value) => _detailedAddress = value ?? _detailedAddress,
                         ),
                       ],
                     ),

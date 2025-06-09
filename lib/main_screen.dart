@@ -13,10 +13,10 @@ import 'package:animated_text_kit/animated_text_kit.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class MainScreen extends StatefulWidget {
-  final String displayName;
+  final String? displayName;
   final List<String>? initialNotifications;
 
-  const MainScreen({super.key, required this.displayName, this.initialNotifications});
+  const MainScreen({super.key, this.displayName, this.initialNotifications});
 
   @override
   _MainScreenState createState() => _MainScreenState();
@@ -26,11 +26,18 @@ class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
   late List<String> notifications;
   final CartService _cartService = CartService();
+  late String _displayName;
 
   @override
   void initState() {
     super.initState();
     notifications = widget.initialNotifications ?? ['New Offer Available!', 'Order Shipped'];
+
+    final user = FirebaseAuth.instance.currentUser;
+    _displayName = widget.displayName ??
+        user?.displayName ??
+        user?.email?.split('@').first ??
+        'Guest';
   }
 
   void _resetToHomeTab() {
@@ -141,7 +148,7 @@ class _MainScreenState extends State<MainScreen> {
 
     final List<Widget> pages = [
       HomePage(
-        displayName: widget.displayName.isEmpty ? 'User' : widget.displayName,
+        displayName: _displayName.isEmpty ? 'User' : _displayName,
         cartService: _cartService,
       ),
       const FavoritesPage(),
@@ -150,7 +157,7 @@ class _MainScreenState extends State<MainScreen> {
         addNotification: _addNotification,
       ),
       ProfilePage(
-        displayName: widget.displayName.isEmpty ? 'User' : widget.displayName,
+        displayName: _displayName.isEmpty ? 'User' : _displayName,
         onLogout: _logout,
       ),
     ];
@@ -163,7 +170,7 @@ class _MainScreenState extends State<MainScreen> {
         leading: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Image.asset(
-            'assets/new_app_icon.png', // Updated to match launcher icon
+            'assets/new_app_icon.png',
             height: 30,
             errorBuilder: (context, error, stackTrace) {
               return Icon(
@@ -318,9 +325,9 @@ class HomePage extends StatelessWidget {
               style: Theme.of(context).textTheme.headlineMedium,
             ),
           ),
-          // Enhanced and centered animated "PAWTIQUE" text with larger, surrounding pet symbols
+          // Responsive height for animated text section
           SizedBox(
-            height: 200,
+            height: MediaQuery.of(context).size.height * 0.25, // 25% of screen height
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -373,19 +380,19 @@ class HomePage extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Animated text with larger size and slower speed
+                // Animated text with responsive font size
                 AnimatedTextKit(
                   animatedTexts: [
                     TypewriterAnimatedText(
                       'PAWTIQUE',
                       textStyle: GoogleFonts.caveat(
                         textStyle: TextStyle(
-                          fontSize: 80,
+                          fontSize: MediaQuery.of(context).size.width * 0.15, // Responsive font size
                           fontWeight: FontWeight.bold,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ) ?? TextStyle(
-                        fontSize: 80,
+                        fontSize: MediaQuery.of(context).size.width * 0.15,
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).colorScheme.primary,
                         fontStyle: FontStyle.italic,
@@ -438,6 +445,7 @@ class HomePage extends StatelessWidget {
             padding: const EdgeInsets.all(8.0),
             crossAxisSpacing: 8.0,
             mainAxisSpacing: 8.0,
+            childAspectRatio: 1.0, // Ensure square cards
             children: [
               _buildCategoryCard('Dog Food', 'assets/dog_food.png', context, 'Dog Food'),
               _buildCategoryCard('Cat Food', 'assets/cat_food.png', context, 'Cat Food'),
@@ -453,6 +461,7 @@ class HomePage extends StatelessWidget {
               _buildCategoryCard('Clothing', 'assets/clothing.png', context, 'Clothing'),
             ],
           ),
+          const SizedBox(height: 20), // Add bottom padding to ensure scrollable space
         ],
       ),
     );
